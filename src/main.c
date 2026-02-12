@@ -29,9 +29,10 @@ typedef enum
     REG_VF, // NOTE: Should not be used by any program
 
     /* "Pseudo-registers" */
+    REG_DT,
+    REG_ST,
 
-    REG_PC, // NOTE: 16 bit Register!
-            // TODO: How to handle this register?
+    /* Stack Pointer register */
     REG_SP,
     REG_COUNT,
 } reg;
@@ -63,6 +64,8 @@ static uint16_t stack[STACK_SIZE];
 static uint8_t regs[REG_COUNT];
 static uint8_t display[DISPLAY_SIZE];
 static uint8_t keypad[KEY_COUNT];
+static uint16_t reg_pc;
+static uint16_t reg_i;
 
 // static uint8_t keypad[] = {
 //     0x01, 0x02, 0x03, 0x0C,
@@ -95,8 +98,9 @@ static uint8_t *read_file(const char *filename, uint32_t *file_size)
 {
     FILE *file = fopen(filename, "rb");
     fseek(file, 0L, SEEK_END);
-    long size = ftell(file) + 1;
-    *file_size = size; 
+    long size = ftell(file) - 1;
+    fseek(file, 0L, SEEK_SET);
+    *file_size = size - 1; 
     fclose(file);
 
     file = fopen(filename, "r");
@@ -109,19 +113,36 @@ static uint8_t *read_file(const char *filename, uint32_t *file_size)
 }
 
 //TODO: Write to file
-static void debug_memory()
+static void debug_memory(uint16_t n)
 {
+    /*
     printf("0x%04x: ", 0);
-    for (uint64_t i = 0; i < RAM_SIZE; ++i)
+    for (uint64_t i = 0; i < RAM_SIZE - 1; i += 2)
     {
         if (i % 16 == 0 && i != 0)
         {
             printf("\n");
             printf("0x%04lx: ", i);
         }
-        printf("0x%03x ", memory[i]);
+        printf("0x%02X%02X ", memory[i], memory[i + 1]);
     }
     printf("\n");
+    */
+
+    for (uint16_t i = 0x200; i < 0x200 + n - 1; i += 2)
+    {
+        uint8_t msb = memory[i];
+        uint8_t lsb = memory[i + 1];
+        uint16_t instr = (msb << 8) | lsb;
+        uint16_t nnn_addr = instr & 0x0FFF;
+        uint8_t nibble = instr & 0x000F;
+        uint8_t x = instr & 0x0F00;
+        uint8_t y = instr & 0x00F0;
+        uint8_t kk_byte = instr & 0x00FF;
+
+        if ((instr & 0x0FFF) == nnn_addr)
+            printf("0x%04X: 0x%04X\n", i, instr);
+    }
 }
 
 static void init()
@@ -139,11 +160,12 @@ int main(int argc, char const *argv[])
     // }
 
     uint32_t size = 0;
-    uint8_t *program = read_file("assets/roms/IBM Logo.ch8", &size);
-    memcpy(memory + 512, program, size);
+    uint8_t *program = read_file("../../assets/roms/IBM Logo.ch8", &size);
+
+    memcpy(&memory[512], program, size);
     free(program);
 
     init();
-    debug_memory();
+    debug_memory((uint16_t)size);
     return 0;
 }
