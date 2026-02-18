@@ -60,12 +60,13 @@ typedef enum
 
 //TODO: Create a struct
 static uint8_t memory[RAM_SIZE];
-static uint16_t stack[STACK_SIZE];
+static uint16_t *stack[STACK_SIZE];
 static uint8_t regs[REG_COUNT];
 static uint8_t display[DISPLAY_SIZE];
 static uint8_t keypad[KEY_COUNT];
 static uint16_t *reg_pc;
 static uint16_t reg_i;
+static uint8_t stack_top;
 
 // static uint8_t keypad[] = {
 //     0x01, 0x02, 0x03, 0x0C,
@@ -147,194 +148,284 @@ static void debug_memory(uint16_t n)
 
 static void instruction_exec(uint32_t size)
 {
-    for (reg_pc = (uint16_t*)(memory + 0x200); reg_pc < (uint16_t *)(memory + 0x200 + size); reg_pc++)
+    for (reg_pc = (uint16_t*)(memory + 0x200); reg_pc < (uint16_t *)(memory + 0x200 + size);)
     {
         uint8_t msb = (uint8_t)(*reg_pc & 0x00FF);
         uint8_t lsb = (uint8_t)((*reg_pc & 0xFF00) >> 8);
         uint16_t instr = (msb << 8) | lsb;
 
         uint16_t nnn_addr = instr & 0x0FFF;
-        uint8_t nibble = instr & 0x000F;
-        uint8_t x = instr & 0x0F00;
-        uint8_t y = instr & 0x00F0;
-        uint8_t kk_byte = instr & 0x00FF;
-        uint8_t top_nibble = instr & 0xF000;
+        uint8_t nibble = (uint8_t)(instr & 0x000F);
+        uint8_t x = (instr & 0x0F00) >> 8;
+        uint8_t y = (instr & 0x00F0) >> 4;
+        uint8_t kk_byte = (uint8_t)(instr & 0x00FF);
+        uint8_t top_nibble = (instr & 0xF000) >> 12;
 
         switch (top_nibble)
         {
-            case 0x0: 
+            case 0x00: 
             {
                 switch (instr)
                 {
                     case 0x00E0:
                     {
-
+                        // TODO: Clear the display
+                        puts("Clear display.");
+                        reg_pc++;
                     } break;
                     case 0x00EE:
                     {
-
+                        puts("Return from a subroutine.");
+                        reg_pc = stack[stack_top--];
                     } break;
                 }
 
             } break;
-            case 0x1:
+            case 0x01:
             {
-                reg_pc = (uint16_t *)(memory + nnn_addr);
+                printf("Jump to location: %hd.\n", nnn_addr);
+                reg_pc = (uint16_t *)(&memory[nnn_addr]);
             } break;
-            case 0x2:
+            case 0x02:
             {
 
+                printf("Call subroutine at: %hd.\n", nnn_addr);
+                stack[++stack_top] = reg_pc;
+                reg_pc = (uint16_t *)(&memory[nnn_addr]);
+                
             } break;
-            case 0x3:
+            case 0x03:
             {
+                printf("Skip next instruction if V%d == %hd.\n", x, kk_byte);
                 if (regs[x] == kk_byte)
-                    ++reg_pc;
+                    reg_pc += 2;
                 else
-                    continue;
+                    ++reg_pc;
 
             } break;
-            case 0x4:
+            case 0x04:
             {
+                printf("Skip next instruction if V%d != %hd.\n", x, kk_byte);
                 if (regs[x] != kk_byte)
-                    ++reg_pc;
+                    reg_pc += 2;
                 else
-                    continue;
+                    ++reg_pc;
             } break;
-            case 0x5:
+            case 0x05:
             {
+                printf("Skip next instruction if V%d == V%d.\n", x, y);
                 if (regs[x] == regs[y])
-                    ++reg_pc;
+                    reg_pc += 2;
                 else
-                    continue;
+                    ++reg_pc;
             } break;
-            case 0x6:
+            case 0x06:
             {
+                printf("Set V%d = %hd.\n", x, kk_byte);
                 regs[x] = kk_byte;
+                reg_pc++;
 
             } break;
-            case 0x7:
+            case 0x07:
             {
+                printf("Set V%d = V%d + %hd.\n", x, x, kk_byte);
                 regs[x] += kk_byte;
-
+                reg_pc++;
             } break;
-            case 0x8:
+            case 0x08:
             {
                 switch (nibble)
                 {
-                    case 0x0:
+                    case 0x00:
                     {
+                        printf("Set V%d = V%d.\n", x, y);
                         regs[x] = regs[y];
+                        reg_pc++;
 
                     } break;
-                    case 0x1:
+                    case 0x01:
                     {
+                        printf("Set V%d = V%d OR V%d.\n", x, x, y);
                         regs[x] |= regs[y];
+                        reg_pc++;
                     } break;
-                    case 0x2:
+                    case 0x02:
                     {
+                        printf("Set V%d = V%d AND V%d.\n", x, x, y);
                         regs[x] &= regs[y];
+                        reg_pc++;
                     } break;
-                    case 0x3:
+                    case 0x03:
                     {
+                        printf("Set V%d = V%d XOR V%d.\n", x, x, y);
                         regs[x] ^= regs[y];
+                        reg_pc++;
                     } break;
-                    case 0x4:
+                    case 0x04:
                     {
+                        printf("Set V%d = V%d + V%d, set VF = carry.\n", x, x, y);
                         uint8_t v1 = regs[x];
                         uint8_t v2 = regs[y];
                         uint16_t result = v1 + v2;
 
-                        if (v1 + v2 > 255)
+                        if (result > 255)
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
 
                         regs[x] = (result & 0x00FF);
+                        reg_pc++;
                     } break;
-                    case 0x5:
+                    case 0x05:
                     {
+                        printf("Set V%d = V%d - V%d, set VF = NOT borrow.\n", x, x, y);
                         if (regs[x] > regs[y])
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
 
                         regs[x] = regs[x] - regs[y];
+                        reg_pc++;
                     } break;
-                    case 0x6:
+                    case 0x06:
                     {
+                        printf("Set V%d = V%d SHR 1.\n", x, x);
                         if (top_nibble & 0b1000)
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
 
                         regs[x] /= 2;
+                        reg_pc++;
                     } break;
-                    case 0x7:
+                    case 0x07:
                     {
+                        printf("Set V%d = V%d - V%d, set VF = NOT borrow.\n", x, y, x);
                         if (regs[x] > regs[y])
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
 
                         regs[x] = regs[y] - regs[x];
+                        reg_pc++;
                     } break;
-                    case 0xE:
+                    case 0x0E:
                     {
+                        printf("Set V%d = V%d SHL 1.\n", x, x);
                         if (nibble & 0b0001)
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
 
                         regs[x] *= 2;
+                        reg_pc++;
                     } break;
-                } break;
+                };
 
             } break;
-            case 0x9:
+            case 0x09:
             {
+                printf("Skip next instruction if V%d != V%d.\n", x, y);
                 if (regs[x] != regs[y])
-                    ++reg_pc;
+                    reg_pc += 2;
                 else
-                    continue;
+                    ++reg_pc;
             } break;
-            case 0xA:
+            case 0x0A:
             {
+                printf("Set I = %hd.\n", nnn_addr);
                 reg_i = nnn_addr;
+                reg_pc++;
             } break;
-            case 0xB:
+            case 0x0B:
             {
+                printf("Jump to location %hd + V0.\n", nnn_addr);
                 reg_pc = (uint16_t *)(memory + nnn_addr + regs[0]);
             } break;
-            case 0xF:
+            case 0x0C:
+            {
+                printf("Set V%d = random byte AND %hd.\n", x, kk_byte);
+                uint8_t rand = 0; //TODO: Generate random byte from 0 to 255
+                regs[x] = rand & kk_byte; //TODO: Swap bitwise and with the CHIP8 AND instr
+                reg_pc++;
+
+            } break;
+            case 0x0D:
+            {
+                printf("Display %d-byte sprite starting at memory location I at (%d, %d), set VF = collision.\n", (uint32_t)nibble, regs[x], regs[y]);
+                //NOTE: Most important instruction
+                //TODO: Implement
+                reg_pc++;
+            } break;
+            case 0x0E:
+            {
+                switch (kk_byte)
+                {
+
+                    case 0x9E:
+                    {
+                        printf("Skip next instruction if key with the value of V%d is pressed.\n", x);
+                        if (keypad[x])
+                            reg_pc += 2;
+                        else
+                            ++reg_pc;
+
+                    } break;
+                    case 0xA1:
+                    {
+                        printf("Skip next instruction if key with the value of V%d is not pressed.\n", x);
+                        if (!keypad[x])
+                            reg_pc += 2;
+                        else
+                            ++reg_pc;
+                    } break;
+                }
+            } break;
+            case 0x0F:
             {
                 
                 switch (kk_byte)
                 {
                     case 0x07:
                     {
+                        printf("Set V%d = delay timer value.\n", x);
                         regs[x] = regs[REG_DT];
+                        reg_pc++;
                     } break;
                     case 0x0A:
                     {
+                        printf("Wait for a key press, store the value of the key in V%d.\n", x);
+                        uint8_t pressed = 0;
+                        //TODO: Implement
+                        reg_pc++;
                     } break;
                     case 0x15:
                     {
+                        printf("Set delay timer = V%d.\n", x);
                         regs[REG_DT] = regs[x];
+                        reg_pc++;
                     } break;
                     case 0x18:
                     {
+                        printf("Set sound timer = V%d.\n", x);
                         regs[REG_ST] = regs[x];
+                        reg_pc++;
                     } break;
                     case 0x1E:
                     {
+                        printf("Set I = I + V%d.\n", x);
                         reg_i = reg_i + regs[x];
+                        reg_pc++;
                     } break;
                     case 0x29:
                     {
-
+                        printf("Set I = location of sprite for digit V%d.\n", x);
+                        reg_i = *((uint16_t *)(&memory[x * 5]));
+                        reg_pc++;
                     } break;
                     case 0x33:
                     {
+                        printf("Store BCD representation of V%d in memory location I, I + 1 and I + 2.\n", x);
                         uint8_t digit = regs[x];
                         for (int8_t i = 2; i >= 0; i--)
                         {
@@ -342,14 +433,34 @@ static void instruction_exec(uint32_t size)
                             *(uint16_t *)(memory + reg_i + i) = nr;
                             digit /= 10;
                         }
+                        reg_pc++;
+                    } break;
+                    case 0x55:
+                    {
+                        printf("Store registers V0 through V%d in memory starting at location I.\n", x);
+                        for (uint64_t i = 0; i < x; i++)
+                        {
 
+                            memory[reg_i + i] = regs[i];
+                        }
+                        reg_pc++;
+
+                    } break;
+                    case 0x65:
+                    {
+                        printf("Read registers V0 through V%d in memory starting at location I.\n", x);
+                        for (uint64_t i = 0; i < x; i++)
+                        {
+                            regs[i] = memory[reg_i + i];
+                        }
+                        reg_pc++;
                     } break;
                 }
 
             } break;
         }
 
-        printf("0x%04hX\n", instr);
+        // printf("0x%04hX\n", instr);
     }
     
 }
