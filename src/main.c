@@ -1,7 +1,10 @@
+#include <SDL.h>
+#include <SDL_events.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define RAM_SIZE (4096)
 #define STACK_SIZE (16)
@@ -117,35 +120,35 @@ read_file(const char *filename, uint32_t *file_size) {
 }
 
 // TODO: Write to file
-internal void
-debug_memory(uint16_t n) {
-    /*
-    printf("0x%04x: ", 0);
-    for (uint64_t i = 0; i < RAM_SIZE - 1; i += 2)
-    {
-        if (i % 16 == 0 && i != 0)
-        {
-            printf("\n");
-            printf("0x%04lx: ", i);
-        }
-        printf("0x%02X%02X ", memory[i], memory[i + 1]);
-    }
-    printf("\n");
-    */
-    for (uint16_t i = 0x200; i < 0x200 + n - 1; i += 2) {
-        const uint8_t msb = memory[i];
-        const uint8_t lsb = memory[i + 1];
-        const uint16_t instr = (msb << 8) | lsb;
-        const uint16_t nnn_addr = instr & 0x0FFF;
-        const uint8_t nibble = instr & 0x000F;
-        const uint8_t x = instr & 0x0F00;
-        const uint8_t y = instr & 0x00F0;
-        const uint8_t kk_byte = instr & 0x00FF;
-
-        if ((instr & 0x0FFF) == nnn_addr)
-            printf("0x%04X: 0x%04X\n", i, instr);
-    }
-}
+// internal void
+// debug_memory(uint16_t n) {
+//    /*
+//    printf("0x%04x: ", 0);
+//    for (uint64_t i = 0; i < RAM_SIZE - 1; i += 2)
+//    {
+//        if (i % 16 == 0 && i != 0)
+//        {
+//            printf("\n");
+//            printf("0x%04lx: ", i);
+//        }
+//        printf("0x%02X%02X ", memory[i], memory[i + 1]);
+//    }
+//    printf("\n");
+//    */
+//    for (uint16_t i = 0x200; i < 0x200 + n - 1; i += 2) {
+//        const uint8_t msb = memory[i];
+//        const uint8_t lsb = memory[i + 1];
+//        const uint16_t instr = (msb << 8) | lsb;
+//        const uint16_t nnn_addr = instr & 0x0FFF;
+//        const uint8_t nibble = instr & 0x000F;
+//        const uint8_t x = (uint8_t)(instr & 0x0F00);
+//        const uint8_t y = (uint8_t)(instr & 0x00F0);
+//        const uint8_t kk_byte = (uint8_t)(instr & 0x00FF);
+//
+//        if ((instr & 0x0FFF) == nnn_addr)
+//            printf("0x%04X: 0x%04X\n", i, instr);
+//    }
+//}
 
 internal void
 instruction_exec(uint32_t size) {
@@ -267,7 +270,7 @@ instruction_exec(uint32_t size) {
                     } break;
                     case 0x06: {
                         printf("Set V%d = V%d SHR 1.\n", x, x);
-                        if (top_nibble & 0b1000)
+                        if (top_nibble & 0x08)
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
@@ -289,7 +292,7 @@ instruction_exec(uint32_t size) {
                     } break;
                     case 0x0E: {
                         printf("Set V%d = V%d SHL 1.\n", x, x);
-                        if (nibble & 0b0001)
+                        if (nibble & 0x01)
                             regs[REG_VF] = 1;
                         else
                             regs[REG_VF] = 0;
@@ -317,9 +320,9 @@ instruction_exec(uint32_t size) {
             } break;
             case 0x0C: {
                 printf("Set V%d = random byte AND %hd.\n", x, kk_byte);
-                uint8_t rand = 43; // TODO: Generate random byte from 0 to 255
-                regs[x] = rand & kk_byte; // TODO: Swap bitwise and with the
-                                          // CHIP8 AND instr
+                uint8_t nr = rand() % 255;
+                regs[x] = nr & kk_byte; // TODO: Swap bitwise and with the
+                                        // CHIP8 AND instr
                 reg_pc++;
             } break;
             case 0x0D: {
@@ -329,7 +332,6 @@ instruction_exec(uint32_t size) {
                        (uint32_t)nibble, regs[x], regs[y]);
                 // NOTE: Most important instruction
                 // TODO: Implement
-                //
 
                 const uint8_t x_coord = regs[x] % 64;
                 const uint8_t y_coord = regs[y] % 32;
@@ -449,27 +451,83 @@ instruction_exec(uint32_t size) {
 }
 
 internal void
-init() {
+init(void) {
     memcpy(memory, sprites, sizeof sprites);
 }
 
 int
 main(int argc, const char *argv[]) {
+    (void)argc;
+    (void)argv;
     // TODO: Add terminal support
     //  if (argc < 2)
     //  {
     //      printf("Usage: chip8 [chip8 program]\n");
     //      return 1;
     //  }
+    //
+    srand((uint32_t)time(NULL));
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        printf("SDL_Init failed: %s", SDL_GetError());
+        return 1;
+    }
 
-    uint32_t size = 0;
-    uint8_t *program = read_file("../../assets/roms/IBM Logo.ch8", &size);
+    SDL_Window *window = SDL_CreateWindow(
+        "Chip8", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+        DISPLAY_WIDTH * 20, DISPLAY_HEIGHT * 20, SDL_WINDOW_SHOWN);
+    if (!window) {
+        printf("SDL_CreateWindow failed: %s", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
 
-    memcpy(&memory[512], program, size);
-    free(program);
+    SDL_Renderer *renderer = SDL_CreateRenderer(
+        window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!renderer) {
+        printf("SDL_CreateRenderer failed: %s", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
-    init();
-    // debug_memory((uint16_t)size);
-    instruction_exec(size);
+    printf("video driver: %s\n", SDL_GetCurrentVideoDriver());
+    uint8_t running = 1;
+
+    SDL_Rect rect = {
+        .x = 10,
+        .y = 20,
+        .w = 100,
+        .h = 200,
+    };
+
+    SDL_Event event;
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                running = 0;
+        }
+
+        SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+        SDL_RenderClear(renderer);
+        SDL_SetRenderDrawColor(renderer, 255, 245, 120, 255);
+        SDL_RenderDrawRect(renderer, &rect);
+        SDL_RenderPresent(renderer);
+
+        SDL_Delay(1);
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+
+    // uint32_t size = 0;
+    // uint8_t *program = read_file("../../assets/roms/IBM Logo.ch8", &size);
+
+    // memcpy(&memory[512], program, size);
+    // free(program);
+
+    // init();
+    //  debug_memory((uint16_t)size);
+    //  instruction_exec(size);
     return 0;
 }
