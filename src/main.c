@@ -71,9 +71,9 @@ global uint16_t stack[STACK_SIZE];
 global uint8_t regs[REG_COUNT];
 global uint8_t display[DISPLAY_SIZE];
 global uint8_t keypad[KEY_COUNT];
-global volatile uint16_t reg_pc = 0x200;
+global uint16_t reg_pc = 0x200;
 global uint16_t reg_i;
-global uint8_t stack_top;
+global uint16_t stack_top;
 
 // static uint8_t keypad[] = {
 //     0x01, 0x02, 0x03, 0x0C,
@@ -123,7 +123,7 @@ read_file(const char *filename, uint32_t *file_size) {
 
 internal void
 instruction_exec(uint32_t size) {
-    SDL_assert(reg_pc >= size);
+    SDL_assert(reg_pc <= (0x200 + size));
 
     const uint8_t msb = (uint8_t)(memory[reg_pc]);
     const uint8_t lsb = (uint8_t)(memory[reg_pc + 1]);
@@ -434,7 +434,7 @@ main(int argc, const char *argv[]) {
     srand((uint32_t)time(NULL));
 
     uint32_t size = 0;
-    uint8_t *program = read_file("../assets/roms/cavern.ch8", &size);
+    uint8_t *program = read_file("../assets/roms/SQRT.ch8", &size);
 
     const uint64_t start_location = 0x200;
     memcpy(&memory[start_location], program, size);
@@ -519,9 +519,17 @@ main(int argc, const char *argv[]) {
             }
         }
         // Main Loop
-        instruction_exec(size);
+        const uint64_t start = SDL_GetPerformanceCounter();
 
-        SDL_Delay(16);
+        for (uint16_t i = 0; i < 500 / 60; i++)
+            instruction_exec(size);
+
+        const uint64_t end = SDL_GetPerformanceCounter();
+
+        const double elapsed =
+            (double)((end - start) * 1000) / SDL_GetPerformanceFrequency();
+
+        SDL_Delay(16.67f > elapsed ? 16.67f - elapsed : 0);
         if (regs[REG_DT] > 0)
             regs[REG_DT]--;
 
@@ -544,7 +552,7 @@ main(int argc, const char *argv[]) {
             if (display[i]) {
                 SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                 SDL_RenderFillRect(renderer, &rect);
-#if 0 // Outline pixels
+#if 1 // Outline pixels
                 SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
                 SDL_RenderDrawRect(renderer, &rect);
 #endif
