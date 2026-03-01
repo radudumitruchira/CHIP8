@@ -67,7 +67,7 @@ typedef enum {
 
 // TODO: Create a struct
 global uint8_t memory[RAM_SIZE];
-global uint16_t *stack[STACK_SIZE];
+global uint16_t stack[STACK_SIZE];
 global uint8_t regs[REG_COUNT];
 global uint8_t display[DISPLAY_SIZE];
 global uint8_t keypad[KEY_COUNT];
@@ -100,7 +100,6 @@ global uint8_t sprites[80] = {
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
-
 // TODO: Create a decent file API
 internal uint8_t *
 read_file(const char *filename, uint32_t *file_size) {
@@ -165,17 +164,17 @@ instruction_exec(uint32_t size) {
         case 0x03: {
             printf("Skip next instruction if V%d == %hd.\n", x, kk_byte);
             if (regs[x] == kk_byte)
-                reg_pc += 4;
+                reg_pc += 2;
         } break;
         case 0x04: {
             printf("Skip next instruction if V%d != %hd.\n", x, kk_byte);
             if (regs[x] != kk_byte)
-                reg_pc += 4;
+                reg_pc += 2;
         } break;
         case 0x05: {
             printf("Skip next instruction if V%d == V%d.\n", x, y);
             if (regs[x] == regs[y])
-                reg_pc += 4;
+                reg_pc += 2;
         } break;
         case 0x06: {
             printf("Set V%d = %hd.\n", x, kk_byte);
@@ -274,8 +273,7 @@ instruction_exec(uint32_t size) {
         case 0x0C: {
             printf("Set V%d = random byte AND %hd.\n", x, kk_byte);
             uint8_t nr = rand() % 255;
-            regs[x] = nr & kk_byte; // TODO: Swap bitwise and with the
-                                    // CHIP8 AND instr
+            regs[x] = nr & kk_byte;
         } break;
         case 0x0D: {
             printf("Display %d-byte sprite starting at memory location "
@@ -320,7 +318,7 @@ instruction_exec(uint32_t size) {
                            "pressed.\n",
                            x);
                     if (keypad[x])
-                        reg_pc += 4;
+                        reg_pc += 2;
                 } break;
                 case 0xA1: {
                     printf("Skip next instruction if key with the "
@@ -329,7 +327,7 @@ instruction_exec(uint32_t size) {
                            "pressed.\n",
                            x);
                     if (!keypad[x])
-                        reg_pc += 4;
+                        reg_pc += 2;
                 } break;
             }
         } break;
@@ -421,7 +419,8 @@ instruction_exec(uint32_t size) {
                     uint8_t digit = regs[x];
                     for (int8_t i = 2; i >= 0; i--) {
                         uint8_t nr = digit % 10;
-                        *(uint16_t *)(memory + reg_i + i) = nr;
+                        printf("%d\n", nr);
+                        *(uint8_t *)(memory + reg_i + i) = nr;
                         digit /= 10;
                     }
                 } break;
@@ -431,7 +430,7 @@ instruction_exec(uint32_t size) {
                            "at location "
                            "I.\n",
                            x);
-                    for (uint64_t i = 0; i < x; i++) {
+                    for (uint64_t i = 0; i <= x; i++) {
                         memory[reg_i + i] = regs[i];
                     }
                 } break;
@@ -441,7 +440,7 @@ instruction_exec(uint32_t size) {
                            "at location "
                            "I.\n",
                            x);
-                    for (uint64_t i = 0; i < x; i++) {
+                    for (uint64_t i = 0; i <= x; i++) {
                         regs[i] = memory[reg_i + i];
                     }
                 } break;
@@ -471,9 +470,10 @@ main(int argc, const char *argv[]) {
     srand((uint32_t)time(NULL));
 
     uint32_t size = 0;
-    uint8_t *program = read_file("../../assets/roms/IBM Logo.ch8", &size);
+    uint8_t *program = read_file("../assets/roms/test.ch8", &size);
 
-    memcpy(&memory[512], program, size);
+    const uint64_t start_location = 0x200;
+    memcpy(&memory[start_location], program, size);
 
     init();
 
@@ -529,6 +529,7 @@ main(int argc, const char *argv[]) {
                     case SDL_SCANCODE_D: keypad[KEY_0D] = 1; break;
                     case SDL_SCANCODE_E: keypad[KEY_0E] = 1; break;
                     case SDL_SCANCODE_F: keypad[KEY_0F] = 1; break;
+                    default: break;
                 }
             }
         }
