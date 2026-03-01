@@ -19,7 +19,7 @@ if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4)
     set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT chip8)
 else ()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
 endif ()
 
 target_link_libraries(chip8 SDL2)

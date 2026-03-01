@@ -46,7 +46,7 @@ typedef enum {
 } reg;
 
 typedef enum {
-    KEY_01,
+    KEY_01 = 1,
     KEY_02,
     KEY_03,
     KEY_04,
@@ -142,6 +142,7 @@ instruction_exec(uint32_t size) {
         case 0x00: {
             switch (instr) {
                 case 0x00E0: {
+                    memset(display, 0, DISPLAY_SIZE);
                     // TODO: Clear the display
                     puts("Clear display.");
 
@@ -317,7 +318,7 @@ instruction_exec(uint32_t size) {
                            "value of V%d is "
                            "pressed.\n",
                            x);
-                    if (keypad[x])
+                    if (keypad[regs[x]])
                         reg_pc += 2;
                 } break;
                 case 0xA1: {
@@ -326,7 +327,7 @@ instruction_exec(uint32_t size) {
                            "is not "
                            "pressed.\n",
                            x);
-                    if (!keypad[x])
+                    if (!keypad[regs[x]])
                         reg_pc += 2;
                 } break;
             }
@@ -343,53 +344,15 @@ instruction_exec(uint32_t size) {
                            "in V%d.\n",
                            x);
                     uint8_t pressed = 0;
-                    while (!pressed) {
-                        if (keypad[KEY_01]) {
-                            regs[x] = 0x01;
+                    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+                        if (keypad[i]) {
+                            regs[x] = i;
                             pressed = 1;
-                        } else if (keypad[KEY_02]) {
-                            regs[x] = 0x02;
-                            pressed = 1;
-                        } else if (keypad[KEY_03]) {
-                            regs[x] = 0x03;
-                            pressed = 1;
-                        } else if (keypad[KEY_04]) {
-                            regs[x] = 0x04;
-                            pressed = 1;
-                        } else if (keypad[KEY_05]) {
-                            regs[x] = 0x05;
-                            pressed = 1;
-                        } else if (keypad[KEY_06]) {
-                            regs[x] = 0x06;
-                            pressed = 1;
-                        } else if (keypad[KEY_07]) {
-                            regs[x] = 0x07;
-                            pressed = 1;
-                        } else if (keypad[KEY_08]) {
-                            regs[x] = 0x08;
-                            pressed = 1;
-                        } else if (keypad[KEY_09]) {
-                            regs[x] = 0x09;
-                            pressed = 1;
-                        } else if (keypad[KEY_0A]) {
-                            regs[x] = 0x0A;
-                            pressed = 1;
-                        } else if (keypad[KEY_0B]) {
-                            regs[x] = 0x0B;
-                            pressed = 1;
-                        } else if (keypad[KEY_0C]) {
-                            regs[x] = 0x0C;
-                            pressed = 1;
-                        } else if (keypad[KEY_0D]) {
-                            regs[x] = 0x0D;
-                            pressed = 1;
-                        } else if (keypad[KEY_0E]) {
-                            regs[x] = 0x0E;
-                            pressed = 1;
-                        } else if (keypad[KEY_0F]) {
-                            regs[x] = 0x0F;
-                            pressed = 1;
+                            break;
                         }
+                    }
+                    if (!pressed) {
+                        reg_pc -= 2;
                     }
                 } break;
                 case 0x15: {
@@ -408,7 +371,8 @@ instruction_exec(uint32_t size) {
                     printf("Set I = location of sprite for digit "
                            "V%d.\n",
                            x);
-                    reg_i = *((uint16_t *)(&memory[x * 5]));
+                    // reg_i = *((uint16_t *)(&memory[x * 5]));
+                    reg_i = (uint16_t)((regs[x]) * 5);
                 } break;
                 case 0x33: {
                     printf("Store BCD representation of V%d in "
@@ -470,7 +434,7 @@ main(int argc, const char *argv[]) {
     srand((uint32_t)time(NULL));
 
     uint32_t size = 0;
-    uint8_t *program = read_file("../assets/roms/test.ch8", &size);
+    uint8_t *program = read_file("../assets/roms/cavern.ch8", &size);
 
     const uint64_t start_location = 0x200;
     memcpy(&memory[start_location], program, size);
@@ -508,29 +472,50 @@ main(int argc, const char *argv[]) {
     SDL_Event event = {0};
     while (running) {
         // Poll Events
-        memset(keypad, 0, KEY_COUNT * sizeof(uint8_t));
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT)
-                running = 0;
-            if (event.type == SDL_KEYDOWN) {
-                switch (event.key.keysym.scancode) {
-                    case SDL_SCANCODE_1: keypad[KEY_01] = 1; break;
-                    case SDL_SCANCODE_2: keypad[KEY_02] = 1; break;
-                    case SDL_SCANCODE_3: keypad[KEY_03] = 1; break;
-                    case SDL_SCANCODE_4: keypad[KEY_04] = 1; break;
-                    case SDL_SCANCODE_5: keypad[KEY_05] = 1; break;
-                    case SDL_SCANCODE_6: keypad[KEY_06] = 1; break;
-                    case SDL_SCANCODE_7: keypad[KEY_07] = 1; break;
-                    case SDL_SCANCODE_8: keypad[KEY_08] = 1; break;
-                    case SDL_SCANCODE_9: keypad[KEY_09] = 1; break;
-                    case SDL_SCANCODE_A: keypad[KEY_0A] = 1; break;
-                    case SDL_SCANCODE_B: keypad[KEY_0B] = 1; break;
-                    case SDL_SCANCODE_C: keypad[KEY_0C] = 1; break;
-                    case SDL_SCANCODE_D: keypad[KEY_0D] = 1; break;
-                    case SDL_SCANCODE_E: keypad[KEY_0E] = 1; break;
-                    case SDL_SCANCODE_F: keypad[KEY_0F] = 1; break;
-                    default: break;
-                }
+            switch (event.type) {
+                case SDL_QUIT: running = 0; break;
+                case SDL_KEYDOWN: {
+                    switch (event.key.keysym.scancode) {
+                        case SDL_SCANCODE_1: keypad[KEY_01] = 1; break;
+                        case SDL_SCANCODE_2: keypad[KEY_02] = 1; break;
+                        case SDL_SCANCODE_3: keypad[KEY_03] = 1; break;
+                        case SDL_SCANCODE_4: keypad[KEY_04] = 1; break;
+                        case SDL_SCANCODE_5: keypad[KEY_05] = 1; break;
+                        case SDL_SCANCODE_6: keypad[KEY_06] = 1; break;
+                        case SDL_SCANCODE_7: keypad[KEY_07] = 1; break;
+                        case SDL_SCANCODE_8: keypad[KEY_08] = 1; break;
+                        case SDL_SCANCODE_9: keypad[KEY_09] = 1; break;
+                        case SDL_SCANCODE_A: keypad[KEY_0A] = 1; break;
+                        case SDL_SCANCODE_B: keypad[KEY_0B] = 1; break;
+                        case SDL_SCANCODE_C: keypad[KEY_0C] = 1; break;
+                        case SDL_SCANCODE_D: keypad[KEY_0D] = 1; break;
+                        case SDL_SCANCODE_E: keypad[KEY_0E] = 1; break;
+                        case SDL_SCANCODE_F: keypad[KEY_0F] = 1; break;
+                        default: break;
+                    }
+                } break;
+                case SDL_KEYUP: {
+                    switch (event.key.keysym.scancode) {
+                        case SDL_SCANCODE_1: keypad[KEY_01] = 0; break;
+                        case SDL_SCANCODE_2: keypad[KEY_02] = 0; break;
+                        case SDL_SCANCODE_3: keypad[KEY_03] = 0; break;
+                        case SDL_SCANCODE_4: keypad[KEY_04] = 0; break;
+                        case SDL_SCANCODE_5: keypad[KEY_05] = 0; break;
+                        case SDL_SCANCODE_6: keypad[KEY_06] = 0; break;
+                        case SDL_SCANCODE_7: keypad[KEY_07] = 0; break;
+                        case SDL_SCANCODE_8: keypad[KEY_08] = 0; break;
+                        case SDL_SCANCODE_9: keypad[KEY_09] = 0; break;
+                        case SDL_SCANCODE_A: keypad[KEY_0A] = 0; break;
+                        case SDL_SCANCODE_B: keypad[KEY_0B] = 0; break;
+                        case SDL_SCANCODE_C: keypad[KEY_0C] = 0; break;
+                        case SDL_SCANCODE_D: keypad[KEY_0D] = 0; break;
+                        case SDL_SCANCODE_E: keypad[KEY_0E] = 0; break;
+                        case SDL_SCANCODE_F: keypad[KEY_0F] = 0; break;
+                        default: break;
+                    }
+                } break;
+                default: break;
             }
         }
         // Main Loop
@@ -559,6 +544,10 @@ main(int argc, const char *argv[]) {
             if (display[i]) {
                 SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                 SDL_RenderFillRect(renderer, &rect);
+#if 0 // Outline pixels
+                SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
+                SDL_RenderDrawRect(renderer, &rect);
+#endif
             } else {
                 SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
                 SDL_RenderFillRect(renderer, &rect);
@@ -574,6 +563,5 @@ main(int argc, const char *argv[]) {
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
-
     return 0;
 }
